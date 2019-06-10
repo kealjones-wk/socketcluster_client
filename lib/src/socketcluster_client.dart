@@ -1,7 +1,7 @@
 part of socketcluster_client;
 
 class Socket extends Emitter {
-  WebSocket _socket;
+  dynamic _socket;
   String url;
   String id;
   final ReconnectStrategy strategy;
@@ -26,19 +26,45 @@ class Socket extends Emitter {
         .catchError((e) => listener.onConnectError(this, e));
   }*/
 
-  Socket._internal(this._socket,
-      {this.authToken, this.strategy, this.listener}) {
-    _socket.listen(handleMessage).onDone(onSocketDone);
-    onSocketOpened();
+  Socket._internal(this._socket, {this.authToken, this.strategy, this.listener}) {
+    this._socket = _socket;
+    if (_socket is html.WebSocket) {
+      _socket..onOpen.listen(onSocketOpened)..onClose.listen(onSocketDone)..onMessage.listen(handleMessage);
+    } else {
+      _socket.listen(handleMessage).onDone(onSocketDone);
+      onSocketOpened();
+    }
   }
 
   static Future<Socket> connect(String url,
-      {String authToken,
-      ReconnectStrategy strategy,
-      BasicListener listener}) async {
-    var socket = await WebSocket.connect(url);
-    return new Socket._internal(socket,
-        authToken: authToken, strategy: strategy, listener: listener);
+      {String authToken, ReconnectStrategy strategy, BasicListener listener}) async {
+    try {
+      var socket = await WebSocket.connect(url);
+      return new Socket._internal(
+        socket,
+        authToken: authToken,
+        strategy: strategy,
+        listener: listener,
+      );
+    } catch (e) {
+      if (e is UnsupportedError) {
+        var _htmlsocket = new html.WebSocket(url);
+        var _socket = new Socket._internal(_htmlsocket, authToken: authToken, strategy: strategy, listener: listener);
+        await whenTrue(_socket._socket.onOpen);
+        return _socket;
+      }
+      throw e;
+    }
+  }
+
+  static Future<html.Event> whenTrue(Stream source) async {
+    await for (html.Event value in source) {
+      if (value != null) {
+        return value;
+      }
+    }
+    return null;
+    // stream exited without a true value, maybe return an exception.
   }
 
   void setProxy(String host, int port) {
@@ -52,7 +78,7 @@ class Socket extends Emitter {
     //_socket.AllowUnstrustedCertificate = value;
   }
 
-  void onSocketOpened() {
+  void onSocketOpened([event]) {
     _counter = 0;
     strategy?.attmptsMade = 0;
     var authObject = {
@@ -64,13 +90,17 @@ class Socket extends Emitter {
     };
     // Note: ported C# code had Formatting.Indented parameter
     dynamic json = jsonEncode(authObject);
-    _socket.add(json);
+    if (_socket is html.WebSocket) {
+      _socket.send(json);
+    } else {
+      _socket.add(json);
+    }
     if (listener != null) {
       listener.onConnected(this);
     }
   }
 
-  void onSocketDone() {
+  void onSocketDone([event]) {
     if (listener != null) {
       listener.onDisconnected(this);
     }
@@ -82,9 +112,17 @@ class Socket extends Emitter {
     return channel;
   }
 
-  void handleMessage(dynamic message) {
+  void handleMessage([dynamic message]) {
+    if (message is html.MessageEvent) {
+      message = message.data;
+    }
     if (message == "#1") {
-      _socket.add("#2");
+      if (_socket is html.WebSocket){
+        _socket.send("#2");
+      } else {
+        _socket.add("#2");
+      }
+
     } else {
 //      print('Message received: $message');
 
@@ -156,7 +194,11 @@ class Socket extends Emitter {
         'rid': cid as String, // FIXME: rid -> cid?
       };
       var json = jsonEncode(message);
-      _socket.add(json);
+      if (_socket is html.WebSocket) {
+        _socket.send(json);
+      } else {
+        _socket.add(json);
+      }
     };
   }
 
@@ -170,7 +212,12 @@ class Socket extends Emitter {
       _acks[count] = getAckObject(event, ack);
     }
     var json = jsonEncode(message);
-    _socket.add(json);
+    if (_socket is html.WebSocket) {
+      _socket.send(json);
+    } else {
+      _socket.add(json);
+    }
+
     return this;
   }
 
@@ -183,7 +230,11 @@ class Socket extends Emitter {
     };
     if (ack != null) _acks[count] = getAckObject(channel, ack);
     var json = jsonEncode(message);
-    _socket.add(json);
+    if (_socket is html.WebSocket) {
+      _socket.send(json);
+    } else {
+      _socket.add(json);
+    }
     return this;
   }
 
@@ -192,7 +243,11 @@ class Socket extends Emitter {
     var message = {'event': '#unsubscribe', 'data': channel, 'cid': count};
     if (ack != null) _acks[count] = getAckObject(channel, ack);
     var json = jsonEncode(message);
-    _socket.add(json);
+    if (_socket is html.WebSocket) {
+      _socket.send(json);
+    } else {
+      _socket.add(json);
+    }
     return this;
   }
 
@@ -205,7 +260,11 @@ class Socket extends Emitter {
     };
     if (ack != null) _acks[count] = getAckObject(channel, ack);
     var json = jsonEncode(message);
-    _socket.add(json);
+    if (_socket is html.WebSocket) {
+      _socket.send(json);
+    } else {
+      _socket.add(json);
+    }
     return this;
   }
 

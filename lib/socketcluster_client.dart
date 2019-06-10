@@ -1,6 +1,7 @@
 library socketcluster_client;
 
 import 'dart:io';
+import 'dart:html' as html;
 import 'dart:async';
 import 'dart:convert';
 
